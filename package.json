@@ -1,0 +1,23 @@
+{
+  "name": "dmitry-launcher",
+  "version": "1.0.0",
+  "description": "Simple Minecraft fabric client+server setup",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/gXLg/dmitry-launcher.git"
+  },
+  "author": "gXLg",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/gXLg/dmitry-launcher/issues"
+  },
+  "homepage": "https://github.com/gXLg/dmitry-launcher#readme",
+  "dependencies": {
+    "axios": "^1.9.0",
+    "express": "^5.1.0"
+  }
+}

@@ -1,0 +1,5 @@
+{
+  "ram": 200,
+  "record": "dmitry.page",
+  "start": "node --max-old-space-size=200 index.js {port}"
+}
