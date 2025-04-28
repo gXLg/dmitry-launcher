@@ -25,13 +25,13 @@ const name = host + " - for DL";
   const uuid = JSON.parse(fs.readFileSync(path + "t")).TunnelID;
 
   fs.writeFileSync(path + "i", `tunnel: ${uuid}
-  credentials-file: ./tunnel.json
+credentials-file: ./tunnel.json
 
-  ingress:
-    - hostname: ${host}
-      service: tcp://127.0.0.1:25565
-    - service: http_status:404
-  `);
+ingress:
+  - hostname: ${host}
+    service: tcp://127.0.0.1:25565
+  - service: http_status:404
+`);
 
   const base = "https://api.cloudflare.com/client/v4/";
   const headers = {
