@@ -1,0 +1,803 @@
+package com.dmitry;
+
+import java.io.*;
+import java.net.*;
+import java.nio.file.*;
+import java.util.*;
+import java.util.regex.*;
+import java.util.zip.*;
+import java.util.concurrent.*;
+import org.json.*;
+import org.apache.tools.tar.*;
+
+import javax.swing.*;
+import java.awt.Font;
+import java.io.OutputStream;
+import java.awt.BorderLayout;
+import java.awt.event.FocusAdapter;
+import java.awt.event.FocusEvent;
+import java.util.stream.Collectors;
+
+import java.lang.module.ModuleDescriptor.Version;
+
+public class Launcher {
+
+  private static final File MINECRAFT_DIR = new File(System.getProperty("user.home"), ".dmitry-launcher");
+
+  private static JTextArea outputArea;
+  private static JTextField inputField;
+  private static PipedOutputStream pipedOut = new PipedOutputStream();
+  private static List<Process> children = new ArrayList<>();
+
+  public static void main(String[] args) throws Exception {
+    Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+      for (Process p : children) {
+        p.destroy();
+      }
+    }));
+
+    SwingUtilities.invokeLater(Launcher::runGUI);
+
+    System.setIn(new PipedInputStream(pipedOut));
+
+    // Redirect output
+    System.setOut(new PrintStream(new TextAreaOutputStream()));
+    System.setErr(new PrintStream(new TextAreaOutputStream()));
+
+    run();
+  }
+
+  private static void runGUI() {
+    JFrame frame = new JFrame("Dmitry Launcher");
+    frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+    frame.setSize(800, 800);
+
+    outputArea = new JTextArea();
+    outputArea.setEditable(false);
+    outputArea.setFont(new Font("Monospaced", Font.PLAIN, 12));
+
+    JScrollPane scrollPane = new JScrollPane(outputArea);
+
+
+    PipedOutputStream pipedOutOld = pipedOut;
+
+    inputField = new JTextField();
+    inputField.addActionListener(e -> {
+      String text = inputField.getText() + "\n"; // simulate Enter key
+      try {
+        pipedOut.write(text.getBytes());
+        pipedOut.flush();
+      } catch (IOException ex) {
+        ex.printStackTrace();
+      }
+      inputField.setText("");
+
+      outputArea.append(text);
+      outputArea.setCaretPosition(outputArea.getDocument().getLength());
+    });
+
+    inputField.addFocusListener(new FocusAdapter() {
+      @Override
+      public void focusGained(FocusEvent e) {
+        // When input field gets focus, set caret to end
+        outputArea.setCaretPosition(outputArea.getDocument().getLength());
+      }
+    });
+
+    frame.getContentPane().add(scrollPane, BorderLayout.CENTER);
+    frame.getContentPane().add(inputField, BorderLayout.SOUTH);
+
+    frame.setVisible(true);
+    SwingUtilities.invokeLater(() -> inputField.requestFocusInWindow());
+  }
+
+  private static void run() throws Exception {
+    // Get latest installer version
+    JSONArray installerData = readJsonArray("https://meta.fabricmc.net/v2/versions/installer");
+    String fabricInstallerVersion = null;
+    for (int i = 0; i < installerData.length(); i++) {
+      JSONObject entry = installerData.getJSONObject(i);
+      if (entry.getBoolean("stable")) {
+        fabricInstallerVersion = entry.getString("version");
+        break;
+      }
+    }
+
+    if (fabricInstallerVersion == null) {
+      System.out.println("Could not find a stable Fabric installer version.");
+      return;
+    }
+
+    String fabricInstallerUrl = "https://maven.fabricmc.net/net/fabricmc/fabric-installer/" + fabricInstallerVersion + "/fabric-installer-" + fabricInstallerVersion + ".jar";
+    File fabricInstallerPath = new File(MINECRAFT_DIR, "fabric-installer-" + fabricInstallerVersion + ".jar");
+
+    download(fabricInstallerUrl, fabricInstallerPath);
+
+    // Choose launcher
+    System.out.println("(0) client");
+    System.out.println("(1) server");
+    System.out.println("Enter the launcher number");
+
+    Integer launcher = null;
+    Scanner scanner = new Scanner(System.in);
+    while (launcher == null) {
+      System.out.print("> ");
+      String input = scanner.nextLine();
+      if (input.equals("0")) launcher = 0;
+      else if (input.equals("1")) launcher = 1;
+    }
+
+    if (launcher == 0) {
+      launchClient(scanner, fabricInstallerPath);
+    } else {
+      launchServer(scanner, fabricInstallerPath);
+    }
+  }
+
+  private static void download(String urlString, File path) throws IOException {
+    path.getParentFile().mkdirs();
+    if (path.exists()) {
+      System.out.println("Exists " + path.getAbsolutePath());
+      return;
+    }
+    System.out.println("Downloading " + urlString + " -> " + path.getAbsolutePath());
+    path.getParentFile().mkdirs();
+    URL url = URI.create(urlString).toURL();
+    try (InputStream in = url.openStream()) {
+      Files.copy(in, path.toPath(), StandardCopyOption.REPLACE_EXISTING);
+    }
+  }
+
+  private static JSONArray readJsonArray(String urlString) throws IOException, JSONException {
+    return new JSONArray(readUrl(urlString));
+  }
+
+  private static JSONObject readJsonObject(String urlString) throws IOException, JSONException {
+    return new JSONObject(readUrl(urlString));
+  }
+
+  private static String readUrl(String urlString) throws IOException {
+    if (urlString.startsWith("file:")) {
+      return new String(Files.readAllBytes(new File(urlString.substring(5, urlString.length())).toPath()));
+    }
+
+    URL url = URI.create(urlString).toURL();
+    HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+    conn.setRequestProperty("User-Agent", "Mozilla/5.0");
+    try (BufferedReader reader = new BufferedReader(new InputStreamReader(conn.getInputStream()))) {
+      StringBuilder builder = new StringBuilder();
+      String line;
+      while ((line = reader.readLine()) != null) {
+        builder.append(line);
+      }
+      return builder.toString();
+    }
+  }
+
+  private static void launchClient(Scanner scanner, File fabricInstallerPath) throws Exception {
+    File profilesDir = new File(MINECRAFT_DIR, "profiles");
+    File assetsDir = new File(MINECRAFT_DIR, "assets");
+
+    profilesDir.mkdirs();
+    assetsDir.mkdirs();
+
+    String uuid;
+    File uuidPath = new File(MINECRAFT_DIR, "uuid.txt");
+    if (uuidPath.exists()) {
+      uuid = new String(Files.readAllBytes(uuidPath.toPath())).trim();
+    } else {
+      uuid = UUID.randomUUID().toString();
+      Files.write(uuidPath.toPath(), uuid.getBytes());
+    }
+
+    String playerName;
+    File playerNamePath = new File(MINECRAFT_DIR, "playername.txt");
+    if (playerNamePath.exists()) {
+      playerName = new String(Files.readAllBytes(playerNamePath.toPath())).trim();
+    } else {
+      System.out.println("What should be your Minecraft playername?");
+      System.out.print("> ");
+      playerName = scanner.nextLine();
+      Files.write(playerNamePath.toPath(), playerName.getBytes());
+    }
+
+    File[] profiles = profilesDir.listFiles();
+    Map<Integer, String> profileMap = new HashMap<>();
+    if (profiles != null) {
+      for (int i = 0; i < profiles.length; i++) {
+        System.out.println("(" + i + ") " + profiles[i].getName());
+        profileMap.put(i, profiles[i].getName());
+      }
+    }
+
+    System.out.println("Enter the profile number or type '+' to create a new profile");
+
+    String profileName = null;
+    String minecraftVersion = null;
+    boolean isNew = false;
+    while (profileName == null) {
+      System.out.print("> ");
+      String input = scanner.nextLine();
+      try {
+        int n = Integer.parseInt(input);
+        profileName = profileMap.get(n);
+      } catch (Exception e) {
+        if (input.equals("+")) {
+          System.out.println("Name of the profile:");
+          System.out.print("> ");
+          profileName = scanner.nextLine();
+          System.out.println("Minecraft version:");
+          System.out.print("> ");
+          minecraftVersion = scanner.nextLine();
+          isNew = true;
+        }
+      }
+    }
+
+    File profileDir = new File(profilesDir, profileName);
+    File librariesDir = new File(profileDir, "libraries");
+    File versionsDir = new File(profileDir, "versions");
+    File modsDir = new File(profileDir, "mods");
+
+    profileDir.mkdirs();
+    librariesDir.mkdirs();
+    versionsDir.mkdirs();
+    modsDir.mkdirs();
+
+    String fabricLoaderVersion;
+    if (!isNew) {
+      String[] data = new String(Files.readAllBytes(new File(profileDir, "version.txt").toPath())).trim().split("\\s+");
+      minecraftVersion = data[0];
+      fabricLoaderVersion = data[1];
+    } else {
+      JSONArray loaderData = readJsonArray("https://meta.fabricmc.net/v2/versions/loader/");
+      fabricLoaderVersion = null;
+      for (int i = 0; i < loaderData.length(); i++) {
+        JSONObject entry = loaderData.getJSONObject(i);
+        if (entry.getBoolean("stable")) {
+          fabricLoaderVersion = entry.getString("version");
+          break;
+        }
+      }
+      Files.write(new File(profileDir, "version.txt").toPath(), (minecraftVersion + " " + fabricLoaderVersion).getBytes());
+    }
+
+    String versionId = "fabric-loader-" + fabricLoaderVersion + "-" + minecraftVersion;
+    File fabricVersionDir = new File(versionsDir, versionId);
+    File vanillaVersionDir = new File(versionsDir, minecraftVersion);
+
+    // Install Fabric if needed
+    if (!fabricVersionDir.exists()) {
+      ProcessBuilder pb = new ProcessBuilder(
+        "java", "-jar", fabricInstallerPath.getAbsolutePath(),
+        "client",
+        "-dir", profileDir.getAbsolutePath(),
+        "-mcversion", minecraftVersion,
+        "-loader", fabricLoaderVersion,
+        "-noprofile"
+      );
+      Process p = pb.start();
+      children.add(p);
+      pipeChild(p);
+    }
+
+    // Download vanilla Minecraft version
+    File versionJsonPath = new File(vanillaVersionDir, minecraftVersion + ".json");
+    JSONObject versionJson = null;
+    if (!vanillaVersionDir.exists()) {
+      JSONObject versionManifest = readJsonObject("https://piston-meta.mojang.com/mc/game/version_manifest_v2.json");
+      JSONArray versions = versionManifest.getJSONArray("versions");
+      String versionUrl = null;
+      for (int i = 0; i < versions.length(); i++) {
+        if (versions.getJSONObject(i).getString("id").equals(minecraftVersion)) {
+          versionUrl = versions.getJSONObject(i).getString("url");
+          break;
+        }
+      }
+      if (versionUrl == null) {
+        System.out.println("Could not find the official Minecraft version " + minecraftVersion);
+      }
+      vanillaVersionDir.mkdirs();
+      download(versionUrl, versionJsonPath);
+      versionJson = readJsonObject(versionJsonPath.toURI().toString());
+      download(versionJson.getJSONObject("downloads").getJSONObject("client").getString("url"), new File(vanillaVersionDir, minecraftVersion + ".jar"));
+    } else {
+      versionJson = readJsonObject(versionJsonPath.toURI().toString());
+    }
+
+    // Download libraries
+    JSONArray libraries = versionJson.getJSONArray("libraries");
+    for (int i = 0; i < libraries.length(); i++) {
+      JSONObject lib = libraries.getJSONObject(i);
+      if (!checkRules(lib.optJSONArray("rules"))) continue;
+
+      JSONObject artifact = lib.getJSONObject("downloads").getJSONObject("artifact");
+      String artifactUrl = artifact.getString("url");
+      String artifactPath = artifact.getString("path");
+      download(artifactUrl, new File(librariesDir, artifactPath));
+
+      if (lib.has("downloads") && lib.getJSONObject("downloads").has("classifiers")) {
+        String osName = getPlatformOSName();
+        JSONObject classifiers = lib.getJSONObject("downloads").getJSONObject("classifiers");
+        if (lib.has("natives") && lib.getJSONObject("natives").has(osName)) {
+          String nativeKey = lib.getJSONObject("natives").getString(osName);
+          JSONObject nativeObj = classifiers.getJSONObject(nativeKey);
+          String nativeUrl = nativeObj.getString("url");
+          String nativePath = nativeObj.getString("path");
+          download(nativeUrl, new File(librariesDir, nativePath));
+        }
+      }
+    }
+
+
+    // Download assets
+    String assetsIndexName = versionJson.getString("assets");
+    File assetsFile = new File(new File(assetsDir, "indexes"), assetsIndexName + ".json");
+    download(versionJson.getJSONObject("assetIndex").getString("url"), assetsFile);
+
+    JSONObject assetsJson = readJsonObject(assetsFile.toURI().toString());
+    JSONObject objects = assetsJson.getJSONObject("objects");
+    File objectsDir = new File(assetsDir, "objects");
+
+    for (String key : objects.keySet()) {
+      JSONObject asset = objects.getJSONObject(key);
+      String hash = asset.getString("hash");
+      File assetPath = new File(new File(objectsDir, hash.substring(0, 2)), hash);
+      download("https://resources.download.minecraft.net/" + hash.substring(0, 2) + "/" + hash, assetPath);
+    }
+    // Download mods
+    if (!downloadMod("fabric-api", modsDir, minecraftVersion)) return;
+    if (!downloadMod("modflared", modsDir, minecraftVersion)) return;
+
+    downloadMod("modmenu", modsDir, minecraftVersion);
+
+    // Create classpath
+    Map<String, Version> newest = new HashMap<>();
+    Map<String, Path> paths = new HashMap<>();
+    Files.walk(librariesDir.toPath())
+        .filter(path -> path.toString().endsWith(".jar"))
+        .forEach(path -> {
+          String[] parts = path.toString().replace("\\", "/").split("/");
+
+          String sversion = parts[parts.length - 2];
+          Version version = Version.parse(sversion);
+          String key = String.join("/", Arrays.copyOfRange(parts, 0, parts.length - 2)) + "/" + parts[parts.length - 1].replace(sversion, "X");
+
+          if (newest.containsKey(key)) {
+            Version old = newest.get(key);
+            if (old.compareTo(version) > 0) return;
+          }
+          newest.put(key, version);
+          paths.put(key, path);
+        });
+    List<String> classpathList = new ArrayList<>(paths.values().stream().map(Path::toString).collect(Collectors.toList()));
+
+    classpathList.add(new File(vanillaVersionDir, minecraftVersion + ".jar").getAbsolutePath());
+    String classpath = String.join(File.pathSeparator, classpathList);
+
+    // Setup arguments
+    Map<String, String> substitutes = new HashMap<>();
+    substitutes.put("auth_player_name", playerName);
+    substitutes.put("version_name", versionId);
+    substitutes.put("game_directory", profileDir.getAbsolutePath());
+    substitutes.put("assets_root", assetsDir.getAbsolutePath());
+    substitutes.put("assets_index_name", assetsIndexName);
+    substitutes.put("auth_uuid", uuid);
+    substitutes.put("auth_access_token", "access-token");
+    substitutes.put("clientid", "fake-client-id");
+    substitutes.put("auth_xuid", "");
+    substitutes.put("user_type", "legacy");
+    substitutes.put("version_type", "release");
+    substitutes.put("launcher_name", "dmitry-launcher");
+    substitutes.put("launcher_version", "1.0");
+    substitutes.put("natives_directory", new File(profileDir, "natives").getAbsolutePath());
+    substitutes.put("classpath", classpath);
+
+    JSONObject fabricConfig = readJsonObject(new File(new File(profileDir, "versions/" + versionId), versionId + ".json").toURI().toString());
+
+    List<String> jvmArgs = new ArrayList<>();
+    List<String> gameArgs = new ArrayList<>();
+
+    List<JSONArray> jvmAndGameArrays = Arrays.asList(
+        mergeArrays(fabricConfig.getJSONObject("arguments").getJSONArray("jvm"), versionJson.getJSONObject("arguments").getJSONArray("jvm")),
+        mergeArrays(fabricConfig.getJSONObject("arguments").getJSONArray("game"), versionJson.getJSONObject("arguments").getJSONArray("game"))
+    );
+
+    for (int k = 0; k < jvmAndGameArrays.size(); k++) {
+      JSONArray array = jvmAndGameArrays.get(k);
+      List<String> targetList = (k == 0) ? jvmArgs : gameArgs;
+
+      for (int i = 0; i < array.length(); i++) {
+        Object obj = array.get(i);
+        if (obj instanceof JSONObject) {
+          JSONObject argObj = (JSONObject) obj;
+          if (targetList != gameArgs && checkRules(argObj.optJSONArray("rules"))) {
+            Object val = argObj.get("value");
+            if (val instanceof JSONArray) {
+              JSONArray valArr = (JSONArray) val;
+              for (int j = 0; j < valArr.length(); j++) {
+                targetList.add(substitute(valArr.getString(j), substitutes));
+              }
+            } else if (val instanceof String) {
+              targetList.add(substitute((String) val, substitutes));
+            }
+          }
+        } else if (obj instanceof String) {
+          targetList.add(substitute((String) obj, substitutes));
+        }
+      }
+    }
+
+    System.out.println("Launching with JVM options:");
+    System.out.println(jvmArgs);
+    System.out.println("Launching with Game options:");
+    System.out.println(gameArgs);
+
+    // Launch game
+    List<String> command = new ArrayList<>();
+    command.add("java");
+    command.addAll(jvmArgs);
+    command.add("-Xmx3G"); // Memory setting
+    command.add(fabricConfig.getString("mainClass"));
+    command.addAll(gameArgs);
+
+    ProcessBuilder builder = new ProcessBuilder(command);
+    builder.directory(profileDir);
+    Process process = builder.start();
+    children.add(process);
+    pipeChild(process);
+
+    System.out.println("Game closed, you can close the window now");
+  }
+
+  private static JSONArray mergeArrays(JSONArray a, JSONArray b) {
+    JSONArray result = new JSONArray();
+    for (int i = 0; i < a.length(); i++) result.put(a.get(i));
+    for (int i = 0; i < b.length(); i++) result.put(b.get(i));
+    return result;
+  }
+
+  private static String substitute(String s, Map<String, String> subs) {
+    for (Map.Entry<String, String> entry : subs.entrySet()) {
+      s = s.replace("${" + entry.getKey() + "}", entry.getValue());
+    }
+    return s;
+  }
+
+  private static boolean downloadMod(String mod, File modsDir, String minecraftVersion) throws Exception {
+    JSONObject project = readJsonObject("https://api.modrinth.com/v2/project/" + mod);
+    String slug = project.getString("slug");
+
+    File modPath = new File(modsDir, slug + ".jar");
+    if (!modPath.exists()) {
+      JSONArray versions = readJsonArray("https://api.modrinth.com/v2/project/" + slug + "/version");
+      for (int i = 0; i < versions.length(); i++) {
+        JSONObject v = versions.getJSONObject(i);
+        JSONArray loaders = v.getJSONArray("loaders");
+        JSONArray gameVersions = v.getJSONArray("game_versions");
+        if (loaders.toList().contains("fabric") && gameVersions.toList().contains(minecraftVersion) && v.getString("version_type").equals("release")) {
+          String fileUrl = v.getJSONArray("files").getJSONObject(0).getString("url");
+          download(fileUrl, modPath);
+          JSONArray dependencies = v.optJSONArray("dependencies");
+          if (dependencies != null) {
+            for (int j = 0; j < dependencies.length(); j++) {
+              JSONObject dep = dependencies.getJSONObject(j);
+              if (dep.getString("dependency_type").equals("required")) {
+                if (!downloadMod(dep.getString("project_id"), modsDir, minecraftVersion)) return false;
+              }
+            }
+          }
+          return true;
+        }
+      }
+      System.out.println("Could not find a fitting version of " + slug);
+      return false;
+    }
+    return true;
+  }
+
+  private static String getPlatformOSName() {
+    String os = System.getProperty("os.name").toLowerCase();
+    if (os.contains("win")) return "windows";
+    if (os.contains("mac")) return "osx";
+    if (os.contains("nix") || os.contains("nux") || os.contains("aix")) return "linux";
+    return "unknown";
+  }
+
+  private static boolean checkRules(JSONArray rules) {
+    if (rules == null) return true;
+    String osName = getPlatformOSName();
+    String archName = System.getProperty("os.arch").toLowerCase();
+    String version = System.getProperty("os.version");
+
+    for (int i = 0; i < rules.length(); i++) {
+      JSONObject rule = rules.getJSONObject(i);
+      String action = rule.optString("action", "allow");
+      JSONObject osRule = rule.optJSONObject("os");
+      if (osRule != null) {
+
+        if (osRule.has("name")) {
+          if (osRule.getString("name").equals(osName)) {
+            if (action.equals("disallow")) return false;
+          } else {
+            if (action.equals("allow")) return false;
+          }
+        }
+
+        if (osRule.has("arch")) {
+          if (archName.contains(osRule.getString("arch"))) {
+            if (action.equals("disallow")) return false;
+          } else {
+            if (action.equals("allow")) return false;
+          }
+        }
+
+        if (osRule.has("version")) {
+          if (Pattern.matches(osRule.getString("version"), version)) {
+            if (action.equals("disallow")) return false;
+          } else {
+            if (action.equals("allow")) return false;
+          }
+        }
+      }
+    }
+    return true;
+  }
+
+  private static void launchServer(Scanner scanner, File fabricInstallerPath) throws Exception {
+    File serversDir = new File(MINECRAFT_DIR, "servers");
+    serversDir.mkdirs();
+
+    File[] profiles = serversDir.listFiles();
+    Map<Integer, String> profileMap = new HashMap<>();
+    if (profiles != null) {
+      for (int i = 0; i < profiles.length; i++) {
+        System.out.println("(" + i + ") " + profiles[i].getName());
+        profileMap.put(i, profiles[i].getName());
+      }
+    }
+
+    System.out.println("Enter the server number or type '+' to create a new server");
+
+    String profileName = null;
+    String minecraftVersion = null;
+    String tunnelSecret = null;
+    boolean isNew = false;
+    while (profileName == null) {
+      System.out.print("> ");
+      String input = scanner.nextLine();
+      try {
+        int n = Integer.parseInt(input);
+        profileName = profileMap.get(n);
+      } catch (Exception e) {
+        if (input.equals("+")) {
+          System.out.println("Name of the server:");
+          System.out.print("> ");
+          profileName = scanner.nextLine();
+          System.out.println("Minecraft version:");
+          System.out.print("> ");
+          minecraftVersion = scanner.nextLine();
+          System.out.println("The tunnel secret obtained from Dmitry:");
+          System.out.print("> ");
+          tunnelSecret = scanner.nextLine();
+          isNew = true;
+        }
+      }
+    }
+
+    File profileDir = new File(serversDir, profileName);
+    profileDir.mkdirs();
+
+    String fabricLoaderVersion;
+    if (!isNew) {
+      String[] data = new String(Files.readAllBytes(new File(profileDir, "version.txt").toPath())).trim().split("\\s+");
+      minecraftVersion = data[0];
+      fabricLoaderVersion = data[1];
+      tunnelSecret = data[2];
+    } else {
+      JSONArray loaderData = readJsonArray("https://meta.fabricmc.net/v2/versions/loader/");
+      fabricLoaderVersion = null;
+      for (int i = 0; i < loaderData.length(); i++) {
+        JSONObject entry = loaderData.getJSONObject(i);
+        if (entry.getBoolean("stable")) {
+          fabricLoaderVersion = entry.getString("version");
+          break;
+        }
+      }
+      Files.write(new File(profileDir, "version.txt").toPath(), (minecraftVersion + " " + fabricLoaderVersion + " " + tunnelSecret).getBytes());
+    }
+
+    // Download tunnel configs
+    File ingf = new File(profileDir, "ingress.yml");
+    download("https://dmitry.page/" + tunnelSecret + "/t", new File(profileDir, "tunnel.json"));
+    download("https://dmitry.page/" + tunnelSecret + "/i", ingf);
+
+    String ip = null;
+    String ingress = readUrl(ingf.toURI().toString());
+    if (ingress.length() > 0) {
+      ip = ingress.split("\n")[4].split(": ")[1];
+    }
+
+    if (ip == null) {
+      System.out.println("The tunnel secret is invalid! You will have to setup your own proxy!");
+    }
+
+    File fabricLauncherPath = new File(profileDir, "fabric-server-launch.jar");
+
+    if (!fabricLauncherPath.exists()) {
+      ProcessBuilder pb = new ProcessBuilder(
+          "java", "-jar", fabricInstallerPath.getAbsolutePath(),
+          "server",
+          "-dir", profileDir.getAbsolutePath(),
+          "-mcversion", minecraftVersion,
+          "-loader", fabricLoaderVersion,
+          "-downloadMinecraft"
+      );
+      Process p = pb.start();
+      children.add(p);
+      pipeChild(p);
+    }
+
+    // Setup server configs
+    File properties = new File(profileDir, "server.properties");
+    if (!properties.exists()) {
+      Files.writeString(properties.toPath(), "online-mode=false\n");
+    }
+
+    File eula = new File(profileDir, "eula.txt");
+    if (!eula.exists()) {
+      Files.writeString(eula.toPath(), "eula=true\n");
+    }
+
+    Process tunnelProcess = null;
+    if (ip != null) {
+      // Setup Cloudflared
+      String osArch = detectOsArch();
+      File cloudflaredBinary = new File(MINECRAFT_DIR, osArch.startsWith("windows") ? "cloudflared.exe" : "cloudflared");
+      if (!cloudflaredBinary.exists()) {
+        Map<String, String> binaryMap = Map.of(
+          "windows-amd64", "cloudflared-windows-amd64.exe",
+          "windows-386", "cloudflared-windows-386.exe",
+          "linux-amd64", "cloudflared-linux-amd64",
+          "linux-386", "cloudflared-linux-386",
+          "linux-arm", "cloudflared-linux-arm",
+          "linux-armhf", "cloudflared-linux-armhf",
+          "linux-arm64", "cloudflared-linux-arm64",
+          "darwin-amd64", "cloudflared-darwin-amd64.tgz",
+          "darwin-arm64", "cloudflared-darwin-arm64.tgz"
+        );
+        String file = binaryMap.getOrDefault(osArch, null);
+        if (file == null) {
+          System.out.println("Unsupported OS/Arch combo: " + osArch);
+          return;
+        }
+
+        File downloadPath = new File(MINECRAFT_DIR, file);
+        if (file.endsWith(".tgz")) {
+          download("https://github.com/cloudflare/cloudflared/releases/latest/download/" + file, downloadPath);
+          try (InputStream fis = new FileInputStream(downloadPath);
+             GZIPInputStream gis = new GZIPInputStream(fis);
+             TarInputStream tis = new TarInputStream(gis)) {
+            TarEntry entry;
+            while ((entry = tis.getNextEntry()) != null) {
+              File out = new File(MINECRAFT_DIR, entry.getName());
+              Files.copy(tis, out.toPath(), StandardCopyOption.REPLACE_EXISTING);
+            }
+          }
+        } else {
+          download("https://github.com/cloudflare/cloudflared/releases/latest/download/" + file, cloudflaredBinary);
+        }
+
+        if (!osArch.startsWith("windows")) {
+          cloudflaredBinary.setExecutable(true);
+        }
+      }
+
+      // Run cloudflared tunnel
+      ProcessBuilder tunnelBuilder = new ProcessBuilder(
+        cloudflaredBinary.getAbsolutePath(),
+        "--config", "./ingress.yml",
+        "tunnel", "run"
+      );
+      tunnelBuilder.directory(profileDir);
+
+      tunnelProcess = tunnelBuilder.start();
+      children.add(tunnelProcess);
+
+      System.out.println("Tunnel started!");
+      System.out.println("Your friends connect to: " + ip);
+      System.out.println("You connect to:          localhost:25565");
+    }
+
+    // Run server
+    ProcessBuilder serverBuilder = new ProcessBuilder(
+      "java", "-jar", fabricLauncherPath.getAbsolutePath(), "nogui"
+    );
+    serverBuilder.directory(profileDir);
+    Process serverProcess = serverBuilder.start();
+    children.add(serverProcess);
+    pipeChild(serverProcess);
+
+    if (ip != null) {
+      tunnelProcess.destroy();
+      tunnelProcess.waitFor();
+    }
+
+    System.out.println("Server closed, you can close the window now");
+  }
+
+  private static String detectOsArch() {
+    String os = System.getProperty("os.name").toLowerCase();
+    String arch = System.getProperty("os.arch").toLowerCase();
+
+    System.out.println("Detected OS: " + os + ", Architecture: " + arch);
+
+    if (os.contains("win")) {
+      if (arch.contains("64")) return "windows-amd64";
+      else return "windows-386";
+    }
+    if (os.contains("linux")) {
+      if (arch.contains("64")) return "linux-amd64";
+      else if (arch.contains("86")) return "linux-386";
+      else if (arch.contains("arm64")) return "linux-arm64";
+      else if (arch.contains("armv7")) return "linux-armhf";
+      else return "linux-arm";
+    }
+    if (os.contains("mac")) {
+      if (arch.contains("64")) return "darwin-amd64";
+      else if (arch.contains("arm")) return "darwin-arm64";
+    }
+    return "unsupported";
+  }
+
+  private static class TextAreaOutputStream extends OutputStream {
+    @Override
+    public void write(int b) {
+      SwingUtilities.invokeLater(() -> {
+        boolean scroll = outputArea.getCaretPosition() == outputArea.getDocument().getLength();
+        outputArea.append(String.valueOf((char) b));
+        if (scroll) outputArea.setCaretPosition(outputArea.getDocument().getLength());
+      });
+    }
+  }
+
+  private static void pipeChild(Process p) throws InterruptedException, IOException {
+    new Thread(() -> {
+      try (InputStream processOut = p.getInputStream()) {
+        processOut.transferTo(System.out);
+      } catch (IOException e) {
+        e.printStackTrace();
+      }
+    }).start();
+
+    new Thread(() -> {
+      try (InputStream processErr = p.getErrorStream()) {
+        processErr.transferTo(System.err);
+      } catch (IOException e) {
+        e.printStackTrace();
+      }
+    }).start();
+
+    PipedOutputStream pipedOutOld = pipedOut;
+    pipedOut = new PipedOutputStream();
+
+    new Thread(() -> {
+      try (OutputStream processIn = p.getOutputStream(); PipedInputStream input = new PipedInputStream(pipedOut)) {
+
+        byte[] buffer = new byte[1024];
+        int len;
+        while ((len = input.read(buffer)) != -1) {
+          processIn.write(buffer, 0, len);
+          processIn.flush();
+        }
+
+      } catch (IOException e) {
+        e.printStackTrace();
+      }
+
+    }).start();
+
+    p.waitFor();
+    pipedOut = pipedOutOld;
+  }
+}
