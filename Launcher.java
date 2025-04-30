@@ -347,7 +347,9 @@ public class Launcher {
     }
     // Download mods
     if (!downloadMod("fabric-api", modsDir, minecraftVersion)) return;
-    if (!downloadMod("modflared", modsDir, minecraftVersion)) return;
+    if (!downloadMod("modflared", modsDir, minecraftVersion)) {
+      System.out.println("You won't be able to play on a remote cloudflare server in this version");
+    }
 
     downloadMod("modmenu", modsDir, minecraftVersion);
 
