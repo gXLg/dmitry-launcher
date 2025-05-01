@@ -3,7 +3,7 @@ Simple Minecraft fabric client+server setup
 
 # Usage
 1. Install Java on your PC
-2. Go to [<kbd>Releases</kbd>](https://github.com/gXLg/dmitry-launcher/releases) and download the latest `Launcher.jar`
+2. Go to the [<kbd>latest release</kbd>](https://github.com/gXLg/dmitry-launcher/releases/latest) and download the `Launcher.jar`
 3. Follow the next instuctions
 
 # Start
