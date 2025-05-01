@@ -73,7 +73,9 @@ To create a server:
 
 Note, that hosting a server and simultaneously playing the game requires good hardware.
 
-After the server is started, you can join it on the same PC by using the adress `localhost:25565` and your friends can join the server by using the server adress.
+After the server is started, you can join it on the same PC by using the adress <kbd>localhost:25565</kbd> and your friends can join the server by using the server adress.
+
+When running, the input panel is connected to servers console, so you can run commands from there. To stop the server, use the command `stop`.
 
 ## Tunnel Secret
 For somebody to connect to your hosted server, they would need to have a route to your local computer.
@@ -100,6 +102,10 @@ Then, follow the instructions on the [<kbd>Modrinth page</kbd>](https://modrinth
 In case this is too complicated for you, or you don't want to bother buying a domain, you may reach out to me on <kbd>dima _dot_ plesunov _at_ gmx _dot_ de</kbd> to request a tunnel secret.
 Provide me with information on what you are planning to do with the server and the desired server address. I will assign you a domain in form of `<something>.dmitry.page` and send you back the adress and the tunnel secret,
 which you then can use to create tunneled servers. Please keep in mind, that I can monitor the usage of my tunnels and if I detect some suspicious activity, I will disable the tunnel.
+
+## Customization
+You can customize the server settings by going to the `<launcher>/servers/<server name>/` folder. You can add new mods, customize the `server.properties` file and so on.
+By standard, the server is run in "offline mode", which means, anybody can join under any username. If you make your server public, you might wanna add a login mod.
 
 # Building
 If you want to modify the launcher, the source code is available in `Launcher.java`. You can then build it using `build.bat` on Windows or `build.sh` on Unix.
