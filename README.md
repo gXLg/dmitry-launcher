@@ -55,7 +55,8 @@ To create a profile:
 1. Type <kbd>+</kbd>
 2. Type the name of the profile
 3. Type a minecraft version your want to play in. Please note, that not all Minecraft versions are supported by Fabric and you may see some error messages if you select an invalid or an unsupported version.
-4. The launcher will then continue to download all the neccessary stuff to play Minecraft and start up Minecraft after a while.
+4. Type a list of mods you would want to have in that profile, separated by <kbd>,</kbd>. The name is the Mod ID taken from [<kbd>Modrinth</kbd>](https://modrinth.com/mods).
+5. The launcher will then continue to download all the neccessary stuff to play Minecraft and start up Minecraft after a while.
 
 Each profile has its' own mods, ressourcepacks, worlds, servers and config.
 You can inspect the profile by going to `<launcher>/profiles/<profile name>` in your file browser.

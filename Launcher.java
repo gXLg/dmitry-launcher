@@ -13,11 +13,13 @@ import org.apache.tools.tar.*;
 import javax.swing.*;
 import java.awt.Font;
 import java.io.OutputStream;
+import java.awt.Image;
 import java.awt.BorderLayout;
+import java.awt.FlowLayout;
 import java.awt.event.FocusAdapter;
 import java.awt.event.FocusEvent;
-import java.util.stream.Collectors;
 
+import java.util.stream.Collectors;
 import java.lang.module.ModuleDescriptor.Version;
 
 public class Launcher {
@@ -84,9 +86,21 @@ public class Launcher {
       }
     });
 
-    frame.getContentPane().add(scrollPane, BorderLayout.CENTER);
-    frame.getContentPane().add(inputField, BorderLayout.SOUTH);
+    JPanel title = new JPanel();
+    title.setLayout(new FlowLayout(FlowLayout.LEFT));
+    ImageIcon icon = new ImageIcon(Launcher.class.getResource("/images/icon.png"));
+    ImageIcon scaled = new ImageIcon(icon.getImage().getScaledInstance(32, 32, Image.SCALE_SMOOTH));
+    JLabel label = new JLabel("Dmitry Launcher", scaled, JLabel.LEFT);
+    title.setFont(new Font("SansSerif", Font.BOLD, 26));
+    title.add(label);
 
+    JPanel main = new JPanel(new BorderLayout());
+    main.setBorder(BorderFactory.createEmptyBorder(4, 16, 16, 16));
+    main.add(title, BorderLayout.NORTH);
+    main.add(scrollPane, BorderLayout.CENTER);
+    main.add(inputField, BorderLayout.SOUTH);
+
+    frame.setContentPane(main);
     frame.setVisible(true);
     SwingUtilities.invokeLater(() -> inputField.requestFocusInWindow());
   }
@@ -215,6 +229,7 @@ public class Launcher {
     String profileName = null;
     String minecraftVersion = null;
     boolean isNew = false;
+    String mods = null;
     while (profileName == null) {
       System.out.print("> ");
       String input = scanner.nextLine();
@@ -229,6 +244,9 @@ public class Launcher {
           System.out.println("Minecraft version:");
           System.out.print("> ");
           minecraftVersion = scanner.nextLine();
+          System.out.println("Any mods you want to install (leave empty if none):");
+          System.out.print("> ");
+          mods = scanner.nextLine().replace(" ", "");
           isNew = true;
         }
       }
@@ -249,6 +267,7 @@ public class Launcher {
       String[] data = new String(Files.readAllBytes(new File(profileDir, "version.txt").toPath())).trim().split("\\s+");
       minecraftVersion = data[0];
       fabricLoaderVersion = data[1];
+      mods = data[2];
     } else {
       JSONArray loaderData = readJsonArray("https://meta.fabricmc.net/v2/versions/loader/");
       fabricLoaderVersion = null;
@@ -259,7 +278,7 @@ public class Launcher {
           break;
         }
       }
-      Files.write(new File(profileDir, "version.txt").toPath(), (minecraftVersion + " " + fabricLoaderVersion).getBytes());
+      Files.write(new File(profileDir, "version.txt").toPath(), (minecraftVersion + " " + fabricLoaderVersion + " " + mods).getBytes());
     }
 
     String versionId = "fabric-loader-" + fabricLoaderVersion + "-" + minecraftVersion;
@@ -329,7 +348,6 @@ public class Launcher {
       }
     }
 
-
     // Download assets
     String assetsIndexName = versionJson.getString("assets");
     File assetsFile = new File(new File(assetsDir, "indexes"), assetsIndexName + ".json");
@@ -350,8 +368,11 @@ public class Launcher {
     if (!downloadMod("modflared", modsDir, minecraftVersion)) {
       System.out.println("You won't be able to play on a remote cloudflare server in this version");
     }
-
     downloadMod("modmenu", modsDir, minecraftVersion);
+
+    for (String mod : mods.split(",")) {
+      downloadMod(mod, modsDir, minecraftVersion);
+    }
 
     // Create classpath
     Map<String, Version> newest = new HashMap<>();
