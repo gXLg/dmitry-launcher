@@ -370,8 +370,10 @@ public class Launcher {
     }
     downloadMod("modmenu", modsDir, minecraftVersion);
 
-    for (String mod : mods.split(",")) {
-      downloadMod(mod, modsDir, minecraftVersion);
+    if (mods.length() > 1) {
+      for (String mod : mods.split(",")) {
+        downloadMod(mod, modsDir, minecraftVersion);
+      }
     }
 
     // Create classpath
