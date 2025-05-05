@@ -736,7 +736,7 @@ public class Launcher {
 
     // Run server
     ProcessBuilder serverBuilder = new ProcessBuilder(
-      "java", "-jar", fabricLauncherPath.getAbsolutePath(), "nogui"
+      "java", "-Xmx6G", "-jar", fabricLauncherPath.getAbsolutePath(), "nogui"
     );
     serverBuilder.directory(profileDir);
     Process serverProcess = serverBuilder.start();
