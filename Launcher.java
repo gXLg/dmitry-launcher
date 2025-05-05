@@ -264,10 +264,10 @@ public class Launcher {
 
     String fabricLoaderVersion;
     if (!isNew) {
-      String[] data = new String(Files.readAllBytes(new File(profileDir, "version.txt").toPath())).trim().split("\\s+");
+      String[] data = new String(Files.readAllBytes(new File(profileDir, "version.txt").toPath())).trim().split(" ");
       minecraftVersion = data[0];
       fabricLoaderVersion = data[1];
-      mods = data[2];
+      mods = data.length > 2 ? data[2] : "";
     } else {
       JSONArray loaderData = readJsonArray("https://meta.fabricmc.net/v2/versions/loader/");
       fabricLoaderVersion = null;
