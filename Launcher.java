@@ -666,7 +666,7 @@ public class Launcher {
     // Setup server configs
     File properties = new File(profileDir, "server.properties");
     if (!properties.exists()) {
-      Files.writeString(properties.toPath(), "online-mode=false\n");
+      Files.writeString(properties.toPath(), "online-mode=false\nspawn-protection=0\ndifficulty=hard\n");
     }
 
     File eula = new File(profileDir, "eula.txt");
