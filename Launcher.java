@@ -12,13 +12,17 @@ import org.apache.tools.tar.*;
 
 import javax.swing.*;
 import java.awt.Font;
-import java.io.OutputStream;
 import java.awt.Image;
 import java.awt.BorderLayout;
 import java.awt.FlowLayout;
 import java.awt.event.FocusAdapter;
 import java.awt.event.FocusEvent;
+import java.awt.Component;
+import java.awt.Dimension;
+import java.awt.GridLayout;
+import java.awt.Desktop;
 
+import java.io.OutputStream;
 import java.util.stream.Collectors;
 import java.lang.module.ModuleDescriptor.Version;
 
@@ -32,13 +36,246 @@ public class Launcher {
   private static List<Process> children = new ArrayList<>();
 
   public static void main(String[] args) throws Exception {
+    MINECRAFT_DIR.mkdirs();
+
+    if (args.length < 2) {
+      runLauncher();
+    } else {
+      runConsole(args[0], args[1]);
+    }
+  }
+
+  private static void runLauncher() {
+    JFrame frame = new JFrame("Dmitry Launcher");
+    frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+    frame.setSize(600, 500);
+    
+    JPanel title = new JPanel();
+    title.setLayout(new FlowLayout(FlowLayout.LEFT));
+    ImageIcon icon = new ImageIcon(Launcher.class.getResource("/images/icon.png"));
+    ImageIcon scaled = new ImageIcon(icon.getImage().getScaledInstance(32, 32, Image.SCALE_SMOOTH));
+    JLabel label = new JLabel("Dmitry Launcher", scaled, JLabel.LEFT);
+    title.setFont(new Font("SansSerif", Font.BOLD, 26));
+    title.add(label);
+
+    if (Desktop.isDesktopSupported()) {
+      JButton launcherButton = new JButton("Open launcher folder");
+      Desktop desktop = Desktop.getDesktop();
+      launcherButton.addActionListener(e -> {
+        try { desktop.open(MINECRAFT_DIR); } catch (Exception ignored) {}
+      });
+      title.add(launcherButton);
+    }
+
+    JPanel main = new JPanel(new BorderLayout());
+    main.setBorder(BorderFactory.createEmptyBorder(4, 16, 16, 16));
+    main.add(title, BorderLayout.NORTH);
+
+    
+    JPanel content = new JPanel();
+    content.setLayout(new GridLayout(1, 2));
+    
+    // CLIENT
+    JPanel panel1 = new JPanel();
+    panel1.setLayout(new BorderLayout());
+    panel1.setBorder(BorderFactory.createEmptyBorder(5, 5, 5, 5));
+
+    JLabel header1 = new JLabel("Client");
+    header1.setFont(new Font("SansSerif", Font.BOLD, 16));
+    panel1.add(header1, BorderLayout.NORTH);
+
+    // Scrollable list of profiles
+    JPanel buttonList1 = new JPanel();
+    buttonList1.setLayout(new BoxLayout(buttonList1, BoxLayout.Y_AXIS));
+    File clientProfilesDir = new File(MINECRAFT_DIR, "profiles");
+    clientProfilesDir.mkdirs();
+    File[] profiles1 = clientProfilesDir.listFiles();
+    if (profiles1 != null) {
+      for (int i = 0; i < profiles1.length; i++) {
+        if (!profiles1[i].isDirectory()) continue;
+        buttonList1.add(createLaunchButton("client", profiles1[i].getName()));
+      }
+    }
+    JScrollPane scrollPane1 = new JScrollPane(buttonList1);
+    scrollPane1.setPreferredSize(new Dimension(400, 250));
+    panel1.add(scrollPane1, BorderLayout.CENTER);
+
+    // New profile form
+    JPanel formPanel1 = new JPanel();
+    formPanel1.setAlignmentX(Component.LEFT_ALIGNMENT);
+    formPanel1.setLayout(new BoxLayout(formPanel1, BoxLayout.Y_AXIS));
+    formPanel1.add(Box.createVerticalStrut(10));
+    formPanel1.add(new JLabel("New profile"));
+
+    JTextField clientName = new JTextField();
+    JTextField clientVersion = new JTextField();
+    JTextField clientMods = new JTextField();
+    formPanel1.add(makeLabeledField("Name:", clientName));
+    formPanel1.add(makeLabeledField("Version:", clientVersion));
+    formPanel1.add(makeLabeledField("Mods:", clientMods));
+
+    JButton createButton1 = new JButton("Create");
+    createButton1.setAlignmentX(Component.LEFT_ALIGNMENT);
+    formPanel1.add(Box.createVerticalStrut(5));
+    formPanel1.add(createButton1);
+
+    panel1.add(formPanel1, BorderLayout.SOUTH);
+    content.add(panel1);
+
+    createButton1.addActionListener(e -> {
+        String name = clientName.getText();
+        String version = clientVersion.getText();
+        String mods = clientMods.getText().replace(" ", "");
+        if (name.length() == 0 || version.length() == 0) return;
+
+        try {
+          File profileDir = new File(clientProfilesDir, name);
+          profileDir.mkdirs();
+          JSONArray loaderData = readJsonArray("https://meta.fabricmc.net/v2/versions/loader/");
+          String fabricLoaderVersion = null;
+          for (int i = 0; i < loaderData.length(); i++) {
+            JSONObject entry = loaderData.getJSONObject(i);
+            if (entry.getBoolean("stable")) {
+              fabricLoaderVersion = entry.getString("version");
+              break;
+            }
+          }
+          Files.write(new File(profileDir, "version.txt").toPath(), (version + " " + fabricLoaderVersion + " " + mods).getBytes());
+          
+          buttonList1.add(createLaunchButton("client", name));
+          buttonList1.revalidate();
+          buttonList1.repaint();
+          
+          clientName.setText("");
+          clientVersion.setText("");
+          clientMods.setText("");
+        } catch (Exception ignored) {}
+    });
+
+    // SERVER
+    JPanel panel2 = new JPanel();
+    panel2.setLayout(new BorderLayout());
+    panel2.setBorder(BorderFactory.createEmptyBorder(5, 5, 5, 5));
+
+    JLabel header2 = new JLabel("Server");
+    header2.setFont(new Font("SansSerif", Font.BOLD, 16));
+    panel2.add(header2, BorderLayout.NORTH);
+
+    // Scrollable list of profiles
+    JPanel buttonList2 = new JPanel();
+    buttonList2.setLayout(new BoxLayout(buttonList2, BoxLayout.Y_AXIS));
+    File serverProfilesDir = new File(MINECRAFT_DIR, "servers");
+    serverProfilesDir.mkdirs();
+    File[] profiles2 = serverProfilesDir.listFiles();
+    if (profiles2 != null) {
+      for (int i = 0; i < profiles2.length; i++) {
+        if (!profiles2[i].isDirectory()) continue;
+        buttonList2.add(createLaunchButton("server", profiles2[i].getName()));
+      }
+    }
+    JScrollPane scrollPane2 = new JScrollPane(buttonList2);
+    scrollPane2.setPreferredSize(new Dimension(400, 250));
+    panel2.add(scrollPane2, BorderLayout.CENTER);
+
+    // New profile form
+    JPanel formPanel2 = new JPanel();
+    formPanel2.setAlignmentX(Component.LEFT_ALIGNMENT);
+    formPanel2.setLayout(new BoxLayout(formPanel2, BoxLayout.Y_AXIS));
+    formPanel2.add(Box.createVerticalStrut(10));
+    formPanel2.add(new JLabel("New profile"));
+
+    JTextField serverName = new JTextField();
+    JTextField serverVersion = new JTextField();
+    JTextField serverTunnel = new JTextField();
+    formPanel2.add(makeLabeledField("Name:", serverName));
+    formPanel2.add(makeLabeledField("Version:", serverVersion));
+    formPanel2.add(makeLabeledField("Tunnel:", serverTunnel));
+
+    JButton createButton2 = new JButton("Create");
+    createButton2.setAlignmentX(Component.LEFT_ALIGNMENT);
+    formPanel2.add(Box.createVerticalStrut(5));
+    formPanel2.add(createButton2);
+
+    panel2.add(formPanel2, BorderLayout.SOUTH);
+    content.add(panel2);
+
+    createButton2.addActionListener(e -> {
+        String name = serverName.getText();
+        String version = serverVersion.getText();
+        String tunnel = serverTunnel.getText();
+        if (name.length() == 0 || version.length() == 0) return;
+
+        try {
+          File profileDir = new File(serverProfilesDir, name);
+          profileDir.mkdirs();
+          JSONArray loaderData = readJsonArray("https://meta.fabricmc.net/v2/versions/loader/");
+          String fabricLoaderVersion = null;
+          for (int i = 0; i < loaderData.length(); i++) {
+            JSONObject entry = loaderData.getJSONObject(i);
+            if (entry.getBoolean("stable")) {
+              fabricLoaderVersion = entry.getString("version");
+              break;
+            }
+          }
+          Files.write(new File(profileDir, "version.txt").toPath(), (version + " " + fabricLoaderVersion + " " + tunnel).getBytes());
+          
+          buttonList2.add(createLaunchButton("server", name));
+          buttonList2.revalidate();
+          buttonList2.repaint();
+          
+          serverName.setText("");
+          serverVersion.setText("");
+          serverTunnel.setText("");
+        } catch (Exception ignored) {}
+    });
+
+    main.add(content, BorderLayout.CENTER);
+    frame.setContentPane(main);
+    frame.setVisible(true);
+  }
+
+  private static JPanel makeLabeledField(String labelText, JTextField field) {
+    JPanel fieldPanel = new JPanel(new BorderLayout());
+    JLabel label = new JLabel(labelText);
+
+    fieldPanel.add(label, BorderLayout.NORTH);
+    fieldPanel.add(field, BorderLayout.CENTER);
+    fieldPanel.setMaximumSize(new Dimension(Integer.MAX_VALUE, 50));
+    return fieldPanel;
+  }
+  
+  private static JButton createLaunchButton(String launcher, String profile) {
+    JButton button = new JButton(profile);
+    button.setAlignmentX(Component.LEFT_ALIGNMENT);
+    button.addActionListener(e -> {
+      try { launchWithArgs(launcher, profile); } catch (Exception ignored) {}
+    });
+    return button;
+  }
+  
+  private static void launchWithArgs(String launcher, String profile) throws Exception {
+    String jar = new File(Launcher.class.getProtectionDomain().getCodeSource().getLocation().toURI()).getPath();
+    if (getPlatformOSName() == "windows") {
+      new ProcessBuilder("cmd", "/c", "start", "/b", "java", "-jar", jar, launcher, profile).start();
+    } else {
+      new ProcessBuilder("sh", "-c", "nohup java -jar '" + jar + "' '" + launcher + "' '" + profile + "' </dev/null &>/dev/null &").start();
+    }
+  }
+
+  private static void runConsole(String launcher, String profile) throws Exception {
+
+    File profilesDir = new File(MINECRAFT_DIR, launcher.equals("client") ? "profiles" : "servers");
+    profilesDir.mkdirs();
+    File profileDir = new File(profilesDir, profile);
+    profileDir.mkdirs();
+
     Runtime.getRuntime().addShutdownHook(new Thread(() -> {
       for (Process p : children) {
         p.destroy();
       }
     }));
 
-    SwingUtilities.invokeLater(Launcher::runGUI);
+    SwingUtilities.invokeLater(() -> runGUI(launcher, profile));
 
     System.setIn(new PipedInputStream(pipedOut));
 
@@ -46,11 +283,14 @@ public class Launcher {
     System.setOut(new PrintStream(new TextAreaOutputStream()));
     System.setErr(new PrintStream(new TextAreaOutputStream()));
 
-    run();
+    run(launcher, profile);
   }
 
-  private static void runGUI() {
-    JFrame frame = new JFrame("Dmitry Launcher");
+  private static void runGUI(String launcher, String profile) {
+    File profilesDir = new File(MINECRAFT_DIR, launcher.equals("client") ? "profiles" : "servers");
+    File profileDir = new File(profilesDir, profile);
+
+    JFrame frame = new JFrame("Dmitry Launcher (" + launcher + ")");
     frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
     frame.setSize(800, 800);
 
@@ -59,7 +299,6 @@ public class Launcher {
     outputArea.setFont(new Font("Monospaced", Font.PLAIN, 12));
 
     JScrollPane scrollPane = new JScrollPane(outputArea);
-
 
     PipedOutputStream pipedOutOld = pipedOut;
 
@@ -94,6 +333,15 @@ public class Launcher {
     title.setFont(new Font("SansSerif", Font.BOLD, 26));
     title.add(label);
 
+    if (Desktop.isDesktopSupported()) {
+      JButton launcherButton = new JButton("Open profile folder");
+      Desktop desktop = Desktop.getDesktop();
+      launcherButton.addActionListener(e -> {
+        try { desktop.open(profileDir); } catch (Exception ignored) {}
+      });
+      title.add(launcherButton);
+    }
+
     JPanel main = new JPanel(new BorderLayout());
     main.setBorder(BorderFactory.createEmptyBorder(4, 16, 16, 16));
     main.add(title, BorderLayout.NORTH);
@@ -105,7 +353,7 @@ public class Launcher {
     SwingUtilities.invokeLater(() -> inputField.requestFocusInWindow());
   }
 
-  private static void run() throws Exception {
+  private static void run(String launcher, String profile) throws Exception {
     // Get latest installer version
     JSONArray installerData = readJsonArray("https://meta.fabricmc.net/v2/versions/installer");
     String fabricInstallerVersion = null;
@@ -127,24 +375,11 @@ public class Launcher {
 
     download(fabricInstallerUrl, fabricInstallerPath);
 
-    // Choose launcher
-    System.out.println("(0) client");
-    System.out.println("(1) server");
-    System.out.println("Enter the launcher number");
-
-    Integer launcher = null;
     Scanner scanner = new Scanner(System.in);
-    while (launcher == null) {
-      System.out.print("> ");
-      String input = scanner.nextLine();
-      if (input.equals("0")) launcher = 0;
-      else if (input.equals("1")) launcher = 1;
-    }
-
-    if (launcher == 0) {
-      launchClient(scanner, fabricInstallerPath);
-    } else {
-      launchServer(scanner, fabricInstallerPath);
+    if (launcher.equals("client")) {
+      launchClient(scanner, fabricInstallerPath, profile);
+    } else if (launcher.equals("server")) {
+      launchServer(scanner, fabricInstallerPath, profile);
     }
   }
 
@@ -188,11 +423,9 @@ public class Launcher {
     }
   }
 
-  private static void launchClient(Scanner scanner, File fabricInstallerPath) throws Exception {
+  private static void launchClient(Scanner scanner, File fabricInstallerPath, String profileName) throws Exception {
     File profilesDir = new File(MINECRAFT_DIR, "profiles");
     File assetsDir = new File(MINECRAFT_DIR, "assets");
-
-    profilesDir.mkdirs();
     assetsDir.mkdirs();
 
     String uuid;
@@ -215,71 +448,19 @@ public class Launcher {
       Files.write(playerNamePath.toPath(), playerName.getBytes());
     }
 
-    File[] profiles = profilesDir.listFiles();
-    Map<Integer, String> profileMap = new HashMap<>();
-    if (profiles != null) {
-      for (int i = 0; i < profiles.length; i++) {
-        System.out.println("(" + i + ") " + profiles[i].getName());
-        profileMap.put(i, profiles[i].getName());
-      }
-    }
-
-    System.out.println("Enter the profile number or type '+' to create a new profile");
-
-    String profileName = null;
-    String minecraftVersion = null;
-    boolean isNew = false;
-    String mods = null;
-    while (profileName == null) {
-      System.out.print("> ");
-      String input = scanner.nextLine();
-      try {
-        int n = Integer.parseInt(input);
-        profileName = profileMap.get(n);
-      } catch (Exception e) {
-        if (input.equals("+")) {
-          System.out.println("Name of the profile:");
-          System.out.print("> ");
-          profileName = scanner.nextLine();
-          System.out.println("Minecraft version:");
-          System.out.print("> ");
-          minecraftVersion = scanner.nextLine();
-          System.out.println("Any mods you want to install (leave empty if none):");
-          System.out.print("> ");
-          mods = scanner.nextLine().replace(" ", "");
-          isNew = true;
-        }
-      }
-    }
-
     File profileDir = new File(profilesDir, profileName);
     File librariesDir = new File(profileDir, "libraries");
     File versionsDir = new File(profileDir, "versions");
     File modsDir = new File(profileDir, "mods");
 
-    profileDir.mkdirs();
     librariesDir.mkdirs();
     versionsDir.mkdirs();
     modsDir.mkdirs();
 
-    String fabricLoaderVersion;
-    if (!isNew) {
-      String[] data = new String(Files.readAllBytes(new File(profileDir, "version.txt").toPath())).trim().split(" ");
-      minecraftVersion = data[0];
-      fabricLoaderVersion = data[1];
-      mods = data.length > 2 ? data[2] : "";
-    } else {
-      JSONArray loaderData = readJsonArray("https://meta.fabricmc.net/v2/versions/loader/");
-      fabricLoaderVersion = null;
-      for (int i = 0; i < loaderData.length(); i++) {
-        JSONObject entry = loaderData.getJSONObject(i);
-        if (entry.getBoolean("stable")) {
-          fabricLoaderVersion = entry.getString("version");
-          break;
-        }
-      }
-      Files.write(new File(profileDir, "version.txt").toPath(), (minecraftVersion + " " + fabricLoaderVersion + " " + mods).getBytes());
-    }
+    String[] data = new String(Files.readAllBytes(new File(profileDir, "version.txt").toPath())).trim().split(" ");
+    String minecraftVersion = data[0];
+    String fabricLoaderVersion = data[1];
+    String mods = data.length > 2 ? data[2] : "";
 
     String versionId = "fabric-loader-" + fabricLoaderVersion + "-" + minecraftVersion;
     File fabricVersionDir = new File(versionsDir, versionId);
@@ -569,68 +750,14 @@ public class Launcher {
     return true;
   }
 
-  private static void launchServer(Scanner scanner, File fabricInstallerPath) throws Exception {
+  private static void launchServer(Scanner scanner, File fabricInstallerPath, String profileName) throws Exception {
     File serversDir = new File(MINECRAFT_DIR, "servers");
-    serversDir.mkdirs();
-
-    File[] profiles = serversDir.listFiles();
-    Map<Integer, String> profileMap = new HashMap<>();
-    if (profiles != null) {
-      for (int i = 0; i < profiles.length; i++) {
-        System.out.println("(" + i + ") " + profiles[i].getName());
-        profileMap.put(i, profiles[i].getName());
-      }
-    }
-
-    System.out.println("Enter the server number or type '+' to create a new server");
-
-    String profileName = null;
-    String minecraftVersion = null;
-    String tunnelSecret = null;
-    boolean isNew = false;
-    while (profileName == null) {
-      System.out.print("> ");
-      String input = scanner.nextLine();
-      try {
-        int n = Integer.parseInt(input);
-        profileName = profileMap.get(n);
-      } catch (Exception e) {
-        if (input.equals("+")) {
-          System.out.println("Name of the server:");
-          System.out.print("> ");
-          profileName = scanner.nextLine();
-          System.out.println("Minecraft version:");
-          System.out.print("> ");
-          minecraftVersion = scanner.nextLine();
-          System.out.println("The tunnel secret obtained from Dmitry:");
-          System.out.print("> ");
-          tunnelSecret = scanner.nextLine();
-          isNew = true;
-        }
-      }
-    }
-
     File profileDir = new File(serversDir, profileName);
-    profileDir.mkdirs();
 
-    String fabricLoaderVersion;
-    if (!isNew) {
-      String[] data = new String(Files.readAllBytes(new File(profileDir, "version.txt").toPath())).trim().split("\\s+");
-      minecraftVersion = data[0];
-      fabricLoaderVersion = data[1];
-      tunnelSecret = data[2];
-    } else {
-      JSONArray loaderData = readJsonArray("https://meta.fabricmc.net/v2/versions/loader/");
-      fabricLoaderVersion = null;
-      for (int i = 0; i < loaderData.length(); i++) {
-        JSONObject entry = loaderData.getJSONObject(i);
-        if (entry.getBoolean("stable")) {
-          fabricLoaderVersion = entry.getString("version");
-          break;
-        }
-      }
-      Files.write(new File(profileDir, "version.txt").toPath(), (minecraftVersion + " " + fabricLoaderVersion + " " + tunnelSecret).getBytes());
-    }
+    String[] data = new String(Files.readAllBytes(new File(profileDir, "version.txt").toPath())).trim().split(" ");
+    String minecraftVersion = data[0];
+    String fabricLoaderVersion = data[1];
+    String tunnelSecret = data.length > 2 ? data[2] : "";
 
     // Download tunnel configs
     File ingf = new File(profileDir, "ingress.yml");
