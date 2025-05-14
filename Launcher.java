@@ -17,6 +17,8 @@ import java.awt.BorderLayout;
 import java.awt.FlowLayout;
 import java.awt.event.FocusAdapter;
 import java.awt.event.FocusEvent;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
 import java.awt.Component;
 import java.awt.Dimension;
 import java.awt.GridLayout;
@@ -90,10 +92,12 @@ public class Launcher {
     File clientProfilesDir = new File(MINECRAFT_DIR, "profiles");
     clientProfilesDir.mkdirs();
     File[] profiles1 = clientProfilesDir.listFiles();
+    Set<String> profilesSet1 = new HashSet<>();
     if (profiles1 != null) {
       for (int i = 0; i < profiles1.length; i++) {
+        profilesSet1.add(profiles1[i].getName());
         if (!profiles1[i].isDirectory()) continue;
-        buttonList1.add(createLaunchButton("client", profiles1[i].getName()));
+        buttonList1.add(createLaunchButton("client", profiles1[i].getName(), frame));
       }
     }
     JScrollPane scrollPane1 = new JScrollPane(buttonList1);
@@ -123,10 +127,11 @@ public class Launcher {
     content.add(panel1);
 
     createButton1.addActionListener(e -> {
-        String name = clientName.getText();
-        String version = clientVersion.getText();
-        String mods = clientMods.getText().replace(" ", "");
+        String name = clientName.getText().strip();
+        String version = clientVersion.getText().strip();
+        String mods = clientMods.getText().replace("\\s+", "");
         if (name.length() == 0 || version.length() == 0) return;
+        if (profilesSet1.contains(name)) return;
 
         try {
           File profileDir = new File(clientProfilesDir, name);
@@ -142,7 +147,7 @@ public class Launcher {
           }
           Files.write(new File(profileDir, "version.txt").toPath(), (version + " " + fabricLoaderVersion + " " + mods).getBytes());
           
-          buttonList1.add(createLaunchButton("client", name));
+          buttonList1.add(createLaunchButton("client", name, frame));
           buttonList1.revalidate();
           buttonList1.repaint();
           
@@ -167,10 +172,12 @@ public class Launcher {
     File serverProfilesDir = new File(MINECRAFT_DIR, "servers");
     serverProfilesDir.mkdirs();
     File[] profiles2 = serverProfilesDir.listFiles();
+    Set<String> profilesSet2 = new HashSet<>();
     if (profiles2 != null) {
       for (int i = 0; i < profiles2.length; i++) {
+        profilesSet2.add(profiles2[i].getName());
         if (!profiles2[i].isDirectory()) continue;
-        buttonList2.add(createLaunchButton("server", profiles2[i].getName()));
+        buttonList2.add(createLaunchButton("server", profiles2[i].getName(), frame));
       }
     }
     JScrollPane scrollPane2 = new JScrollPane(buttonList2);
@@ -204,6 +211,7 @@ public class Launcher {
         String version = serverVersion.getText();
         String tunnel = serverTunnel.getText();
         if (name.length() == 0 || version.length() == 0) return;
+        if (profilesSet2.contains(name)) return;
 
         try {
           File profileDir = new File(serverProfilesDir, name);
@@ -219,7 +227,7 @@ public class Launcher {
           }
           Files.write(new File(profileDir, "version.txt").toPath(), (version + " " + fabricLoaderVersion + " " + tunnel).getBytes());
           
-          buttonList2.add(createLaunchButton("server", name));
+          buttonList2.add(createLaunchButton("server", name, frame));
           buttonList2.revalidate();
           buttonList2.repaint();
           
@@ -244,15 +252,63 @@ public class Launcher {
     return fieldPanel;
   }
   
-  private static JButton createLaunchButton(String launcher, String profile) {
+  private static JButton createLaunchButton(String launcher, String profile, JFrame frame) {
     JButton button = new JButton(profile);
     button.setAlignmentX(Component.LEFT_ALIGNMENT);
     button.addActionListener(e -> {
       try { launchWithArgs(launcher, profile); } catch (Exception ignored) {}
     });
+    if (launcher.equals("client")) {
+      button.addMouseListener(new MouseAdapter() {
+        @Override
+        public void mouseClicked(MouseEvent e) {
+          if (SwingUtilities.isRightMouseButton(e)) try { showEditPopup(profile, frame); } catch (Exception ignored) {}
+        }
+      });
+    }
     return button;
   }
   
+  private static void showEditPopup(String profile, JFrame parent) throws Exception {
+    JDialog dialog = new JDialog(parent, "Edit mods", true);
+    dialog.setSize(400, 250);
+
+    JPanel panel = new JPanel();
+    panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
+    panel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+
+    JTextArea inputArea = new JTextArea(5, 40);
+    inputArea.setLineWrap(true);
+    inputArea.setWrapStyleWord(true);
+
+    File clientProfilesDir = new File(MINECRAFT_DIR, "profiles");
+    File profileDir = new File(clientProfilesDir, profile);
+    String[] data = new String(Files.readAllBytes(new File(profileDir, "version.txt").toPath())).trim().split(" ");
+    inputArea.setText(data.length > 2 ? data[2] : "");
+    JScrollPane scrollPane = new JScrollPane(inputArea);
+
+    JButton submitButton = new JButton("Edit");
+    submitButton.setAlignmentX(Component.CENTER_ALIGNMENT);
+    submitButton.setMaximumSize(new Dimension(150, 40));
+    submitButton.setPreferredSize(new Dimension(150, 40));
+
+    submitButton.addActionListener(e -> {
+      String mods = inputArea.getText().replace("\\s+", "");
+      try {
+        Files.write(new File(profileDir, "version.txt").toPath(), (data[0] + " " + data[1] + " " + mods).getBytes());
+      } catch (Exception ignored) {}
+      dialog.dispose();
+    });
+
+    panel.add(scrollPane);
+    panel.add(Box.createVerticalStrut(10));
+    panel.add(submitButton);
+
+    dialog.add(panel);
+    dialog.setLocationRelativeTo(parent);
+    dialog.setVisible(true);
+  }
+
   private static void launchWithArgs(String launcher, String profile) throws Exception {
     String jar = new File(Launcher.class.getProtectionDomain().getCodeSource().getLocation().toURI()).getPath();
     if (getPlatformOSName() == "windows") {
@@ -263,7 +319,6 @@ public class Launcher {
   }
 
   private static void runConsole(String launcher, String profile) throws Exception {
-
     File profilesDir = new File(MINECRAFT_DIR, launcher.equals("client") ? "profiles" : "servers");
     profilesDir.mkdirs();
     File profileDir = new File(profilesDir, profile);
@@ -758,6 +813,10 @@ public class Launcher {
     String minecraftVersion = data[0];
     String fabricLoaderVersion = data[1];
     String tunnelSecret = data.length > 2 ? data[2] : "";
+
+    File modsDir = new File(profileDir, "mods");
+    modsDir.mkdirs();
+    if (!downloadMod("fabric-api", modsDir, minecraftVersion)) return;
 
     // Download tunnel configs
     File ingf = new File(profileDir, "ingress.yml");

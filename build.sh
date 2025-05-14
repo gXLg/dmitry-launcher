@@ -15,6 +15,7 @@ mkdir -p ./build/com/dmitry
 mv ./Launcher.class ./build/com/dmitry
 mv './Launcher$TextAreaOutputStream.class' ./build/com/dmitry
 mv './Launcher$1.class' ./build/com/dmitry
+mv './Launcher$2.class' ./build/com/dmitry
 cp -r ./images ./build
 cat << EOF > MANIFEST.MF
 Manifest-Version: 1.0

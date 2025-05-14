@@ -19,6 +19,7 @@ mkdir .\build\com\dmitry
 move .\Launcher.class .\build\com\dmitry
 move .\Launcher$TextAreaOutputStream.class .\build\com\dmitry
 move .\Launcher$1.class .\build\com\dmitry
+move .\Launcher$2.class .\build\com\dmitry
 robocopy .\images .\build\images
 echo Manifest-Version: 1.0 > MANIFEST.MF
 echo Main-Class: com.dmitry.Launcher >> MANIFEST.MF

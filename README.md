@@ -68,6 +68,7 @@ To create a profile:
 3. Type a list of mods you would want to have in that profile, separated by <kbd>,</kbd>. The name is the Mod ID taken from [<kbd>Modrinth</kbd>](https://modrinth.com/mods).
    - For example if you want to install Sodium and Iris, their respective Modrinth URLs are `https://modrinth.com/mod/sodium` and `https://modrinth.com/mod/iris`. So the respecitve IDs are `sodium` and `iris` and you would type <kbd>sodium,iris</kbd>.
    - If you don't want any additional mods, just leave it empty.
+   - You can change the mod list later by clicking the profile button with the right mouse button.
 5. Press the <kbd>Create</kbd> button.
 
 Each profile has its' own mods, ressourcepacks, worlds, servers and config.
@@ -84,6 +85,8 @@ After the server is started, you can join it on the same PC by using the adress 
 When running, the input panel is connected to server's console, so you can run commands from there. To stop the server, use the command `stop`.
 
 The server starts with 6 GB of RAM.
+
+Server installation automatically downloads the `fabric-api` mod, but all other mods you will have to manage manually.
 
 ## Profiles
 The servers are managed similarly to game profiles.
@@ -122,6 +125,11 @@ which you then can use to create tunneled servers. Please keep in mind, that I c
 ## Customization
 You can customize the server settings by going to the `<launcher>/servers/<server name>/` folder. You can add new mods, customize the `server.properties` file and so on.
 By standard, the server is run in "offline mode", which means, anybody can join under any username. If you make your server public, you might wanna add a login mod.
+
+# Uninstalling
+Since the launcher is a standalone binary, it doesn't install any executables on your computer.
+If you wish to delete Dmitry Launcher, just delete the downloaded `Launcher.jar` file.
+If you also want to completely remove all Minecraft data, just remove the launcher folder.
 
 # Building
 If you want to modify the launcher, the source code is available in `Launcher.java`. You can then build it using `build.bat` on Windows or `build.sh` on Unix.
