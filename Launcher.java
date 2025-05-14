@@ -732,27 +732,45 @@ public class Launcher {
     File modPath = new File(modsDir, slug + ".jar");
     if (!modPath.exists()) {
       JSONArray versions = readJsonArray("https://api.modrinth.com/v2/project/" + slug + "/version");
+      JSONObject beta = null;
+      JSONObject stable = null;
       for (int i = 0; i < versions.length(); i++) {
         JSONObject v = versions.getJSONObject(i);
         JSONArray loaders = v.getJSONArray("loaders");
         JSONArray gameVersions = v.getJSONArray("game_versions");
-        if (loaders.toList().contains("fabric") && gameVersions.toList().contains(minecraftVersion) && v.getString("version_type").equals("release")) {
-          String fileUrl = v.getJSONArray("files").getJSONObject(0).getString("url");
-          download(fileUrl, modPath);
-          JSONArray dependencies = v.optJSONArray("dependencies");
-          if (dependencies != null) {
-            for (int j = 0; j < dependencies.length(); j++) {
-              JSONObject dep = dependencies.getJSONObject(j);
-              if (dep.getString("dependency_type").equals("required")) {
-                if (!downloadMod(dep.getString("project_id"), modsDir, minecraftVersion)) return false;
-              }
-            }
+        if (loaders.toList().contains("fabric") && gameVersions.toList().contains(minecraftVersion)) {
+          if (!v.getString("version_type").equals("release") && beta == null) {
+            beta = v;
+            continue;
           }
-          return true;
+          if (v.getString("version_type").equals("release") && stable == null) {
+            stable = v;
+            break;
+          }
         }
       }
-      System.out.println("Could not find a fitting version of " + slug);
-      return false;
+      JSONObject v = null;
+      if (stable != null) {
+        v = stable;
+      } else if (beta != null) {
+        System.out.println("Warning: downloading an unstable version of " + slug);
+        v = beta;
+      } else {
+        System.out.println("Could not find a fitting version of " + slug);
+        return false;
+      }
+      String fileUrl = v.getJSONArray("files").getJSONObject(0).getString("url");
+      download(fileUrl, modPath);
+      JSONArray dependencies = v.optJSONArray("dependencies");
+      if (dependencies != null) {
+        for (int j = 0; j < dependencies.length(); j++) {
+          JSONObject dep = dependencies.getJSONObject(j);
+          if (dep.getString("dependency_type").equals("required")) {
+            if (!downloadMod(dep.getString("project_id"), modsDir, minecraftVersion)) return false;
+          }
+        }
+      }
+      return true;
     }
     return true;
   }
