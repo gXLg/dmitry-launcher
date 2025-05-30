@@ -837,15 +837,17 @@ public class Launcher {
     if (!downloadMod("fabric-api", modsDir, minecraftVersion)) return;
 
     // Download tunnel configs
-    File ingf = new File(profileDir, "ingress.yml");
-    download("https://dmitry.page/" + tunnelSecret + "/t", new File(profileDir, "tunnel.json"));
-    download("https://dmitry.page/" + tunnelSecret + "/i", ingf);
-
     String ip = null;
-    String ingress = readUrl(ingf.toURI().toString());
-    if (ingress.length() > 0) {
-      ip = ingress.split("\n")[4].split(": ")[1];
-    }
+    try {
+      File ingf = new File(profileDir, "ingress.yml");
+      download("https://dmitry.page/" + tunnelSecret + "/t", new File(profileDir, "tunnel.json"));
+      download("https://dmitry.page/" + tunnelSecret + "/i", ingf);
+
+      String ingress = readUrl(ingf.toURI().toString());
+      if (ingress.length() > 0) {
+        ip = ingress.split("\n")[4].split(": ")[1];
+      }
+    } catch (Exception ignored) {}
 
     if (ip == null) {
       System.out.println("The tunnel secret is invalid! You will have to setup your own proxy!");
