@@ -23,6 +23,8 @@ app.get("/:secret/t", (req, res) => {
   }
 });
 
+app.use("/skins", express.static("./skins"));
+
 const server = app.listen(process.argv[2] ? parseInt(process.argv[2]) : 8080);
 
 process.on("SIGINT", () => server.close());
