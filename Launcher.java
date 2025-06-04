@@ -214,18 +214,27 @@ public class Launcher {
         if (profilesSet2.contains(name)) return;
 
         try {
-          File profileDir = new File(serverProfilesDir, name);
-          profileDir.mkdirs();
-          JSONArray loaderData = readJsonArray("https://meta.fabricmc.net/v2/versions/loader/");
-          String fabricLoaderVersion = null;
-          for (int i = 0; i < loaderData.length(); i++) {
-            JSONObject entry = loaderData.getJSONObject(i);
-            if (entry.getBoolean("stable")) {
-              fabricLoaderVersion = entry.getString("version");
-              break;
+
+          if (version.equals("bridge")) {
+            name += " (bridge)";
+            File profileDir = new File(serverProfilesDir, name);
+            profileDir.mkdirs();
+            Files.write(new File(profileDir, "version.txt").toPath(), ("bridge - " + tunnel).getBytes());
+
+          } else {
+            File profileDir = new File(serverProfilesDir, name);
+            profileDir.mkdirs();
+            JSONArray loaderData = readJsonArray("https://meta.fabricmc.net/v2/versions/loader/");
+            String fabricLoaderVersion = null;
+            for (int i = 0; i < loaderData.length(); i++) {
+              JSONObject entry = loaderData.getJSONObject(i);
+              if (entry.getBoolean("stable")) {
+                fabricLoaderVersion = entry.getString("version");
+                break;
+              }
             }
+            Files.write(new File(profileDir, "version.txt").toPath(), (version + " " + fabricLoaderVersion + " " + tunnel).getBytes());
           }
-          Files.write(new File(profileDir, "version.txt").toPath(), (version + " " + fabricLoaderVersion + " " + tunnel).getBytes());
           
           buttonList2.add(createLaunchButton("server", name, frame));
           buttonList2.revalidate();
@@ -452,17 +461,17 @@ public class Launcher {
     }
   }
 
-  private static JSONArray readJsonArray(String urlString) throws IOException, JSONException {
+  private static JSONArray readJsonArray(String urlString) throws IOException, JSONException, URISyntaxException {
     return new JSONArray(readUrl(urlString));
   }
 
-  private static JSONObject readJsonObject(String urlString) throws IOException, JSONException {
+  private static JSONObject readJsonObject(String urlString) throws IOException, JSONException, URISyntaxException {
     return new JSONObject(readUrl(urlString));
   }
 
-  private static String readUrl(String urlString) throws IOException {
+  private static String readUrl(String urlString) throws IOException, URISyntaxException {
     if (urlString.startsWith("file:")) {
-      return new String(Files.readAllBytes(new File(urlString.substring(5, urlString.length())).toPath()));
+      return new String(Files.readAllBytes(new File(new URI(urlString)).toPath()));
     }
 
     URL url = URI.create(urlString).toURL();
@@ -499,7 +508,7 @@ public class Launcher {
     } else {
       System.out.println("What should be your Minecraft playername?");
       System.out.print("> ");
-      playerName = scanner.nextLine();
+      playerName = scanner.nextLine().trim();
       Files.write(playerNamePath.toPath(), playerName.getBytes());
     }
 
@@ -551,6 +560,7 @@ public class Launcher {
       }
       if (versionUrl == null) {
         System.out.println("Could not find the official Minecraft version " + minecraftVersion);
+        return;
       }
       vanillaVersionDir.mkdirs();
       download(versionUrl, versionJsonPath);
@@ -664,7 +674,7 @@ public class Launcher {
         mergeArrays(fabricConfig.getJSONObject("arguments").getJSONArray("game"), versionJson.getJSONObject("arguments").getJSONArray("game"))
     );
 
-    for (int k = 0; k < jvmAndGameArrays.size(); k++) {
+    for (int k = 0; k < 2; k++) {
       JSONArray array = jvmAndGameArrays.get(k);
       List<String> targetList = (k == 0) ? jvmArgs : gameArgs;
 
@@ -831,10 +841,7 @@ public class Launcher {
     String minecraftVersion = data[0];
     String fabricLoaderVersion = data[1];
     String tunnelSecret = data.length > 2 ? data[2] : "";
-
-    File modsDir = new File(profileDir, "mods");
-    modsDir.mkdirs();
-    if (!downloadMod("fabric-api", modsDir, minecraftVersion)) return;
+    boolean bridge = minecraftVersion.equals("bridge");
 
     // Download tunnel configs
     String ip = null;
@@ -847,37 +854,49 @@ public class Launcher {
       if (ingress.length() > 0) {
         ip = ingress.split("\n")[4].split(": ")[1];
       }
-    } catch (Exception ignored) {}
+    } catch (Exception ignored) {
+      System.out.println(ignored);
+    }
 
     if (ip == null) {
       System.out.println("The tunnel secret is invalid! You will have to setup your own proxy!");
+      if (bridge) return;
+    }
+
+
+    if (!bridge) {
+      File modsDir = new File(profileDir, "mods");
+      modsDir.mkdirs();
+      if (!downloadMod("fabric-api", modsDir, minecraftVersion)) return;
     }
 
     File fabricLauncherPath = new File(profileDir, "fabric-server-launch.jar");
 
-    if (!fabricLauncherPath.exists()) {
-      ProcessBuilder pb = new ProcessBuilder(
-          "java", "-jar", fabricInstallerPath.getAbsolutePath(),
-          "server",
-          "-dir", profileDir.getAbsolutePath(),
-          "-mcversion", minecraftVersion,
-          "-loader", fabricLoaderVersion,
-          "-downloadMinecraft"
-      );
-      Process p = pb.start();
-      children.add(p);
-      pipeChild(p);
-    }
+    if (!bridge) {
+      if (!fabricLauncherPath.exists()) {
+        ProcessBuilder pb = new ProcessBuilder(
+            "java", "-jar", fabricInstallerPath.getAbsolutePath(),
+            "server",
+            "-dir", profileDir.getAbsolutePath(),
+            "-mcversion", minecraftVersion,
+            "-loader", fabricLoaderVersion,
+            "-downloadMinecraft"
+        );
+        Process p = pb.start();
+        children.add(p);
+        pipeChild(p);
+      }
 
-    // Setup server configs
-    File properties = new File(profileDir, "server.properties");
-    if (!properties.exists()) {
-      Files.writeString(properties.toPath(), "online-mode=false\nspawn-protection=0\ndifficulty=hard\n");
-    }
+      // Setup server configs
+      File properties = new File(profileDir, "server.properties");
+      if (!properties.exists()) {
+        Files.writeString(properties.toPath(), "online-mode=false\nspawn-protection=0\ndifficulty=hard\n");
+      }
 
-    File eula = new File(profileDir, "eula.txt");
-    if (!eula.exists()) {
-      Files.writeString(eula.toPath(), "eula=true\n");
+      File eula = new File(profileDir, "eula.txt");
+      if (!eula.exists()) {
+        Files.writeString(eula.toPath(), "eula=true\n");
+      }
     }
 
     Process tunnelProcess = null;
@@ -935,9 +954,21 @@ public class Launcher {
       tunnelProcess = tunnelBuilder.start();
       children.add(tunnelProcess);
 
-      System.out.println("Tunnel started!");
+      System.out.println("=================== Tunnel started! ===================");
       System.out.println("Your friends connect to: " + ip);
-      System.out.println("You connect to:          localhost:25565");
+      if (bridge) {
+        System.out.println("You run in your world:   /publish <commands> <gamemode> 25565");
+        System.out.println("To stop the bridge, just close this window");
+      } else {
+        System.out.println("You connect to:          localhost:25565");
+      }
+      System.out.println("=======================================================");
+
+      if (bridge) {
+        pipeChild(tunnelProcess);
+        System.out.println("Tunnel just crashed! Restart the bridge!");
+        return;
+      }
     }
 
     // Run server

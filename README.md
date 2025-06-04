@@ -126,8 +126,21 @@ which you then can use to create tunneled servers. Please keep in mind, that I c
 You can customize the server settings by going to the `<launcher>/servers/<server name>/` folder. You can add new mods, customize the `server.properties` file and so on.
 By standard, the server is run in "offline mode", which means, anybody can join under any username. If you make your server public, you might wanna add a login mod.
 
+# Bridge
+The launcher also offers a unique feature - a LAN bridge.
+This feature allows you to open your singleplayer world to LAN and create an outgoing connection,
+which works as a server, so that your friends can join, even without being in the same network as you.
+
+To create a bridge, create a server profile with `bridge` as the version.
+The same rules apply for the tunnel secret as for the server.
+
+To finish the setup, go to your singleplayer world and run the following command:
+```
+/publish <allowCommands> <gamemode> 25565
+```
+
 # Uninstalling
-Since the launcher is a standalone binary, it doesn't install any executables on your computer.
+Since the launcher is a standalone binary, it doesn't install any executables on your computer outside of the launcher folder.
 If you wish to delete Dmitry Launcher, just delete the downloaded `Launcher.jar` file.
 If you also want to completely remove all Minecraft data, just remove the launcher folder.
 
