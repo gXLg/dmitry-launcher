@@ -51,7 +51,7 @@ public class Launcher {
     JFrame frame = new JFrame("Dmitry Launcher");
     frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
     frame.setSize(600, 500);
-    
+
     JPanel title = new JPanel();
     title.setLayout(new FlowLayout(FlowLayout.LEFT));
     ImageIcon icon = new ImageIcon(Launcher.class.getResource("/images/icon.png"));
@@ -73,10 +73,10 @@ public class Launcher {
     main.setBorder(BorderFactory.createEmptyBorder(4, 16, 16, 16));
     main.add(title, BorderLayout.NORTH);
 
-    
+
     JPanel content = new JPanel();
     content.setLayout(new GridLayout(1, 2));
-    
+
     // CLIENT
     JPanel panel1 = new JPanel();
     panel1.setLayout(new BorderLayout());
@@ -146,11 +146,11 @@ public class Launcher {
             }
           }
           Files.write(new File(profileDir, "version.txt").toPath(), (version + " " + fabricLoaderVersion + " " + mods).getBytes());
-          
+
           buttonList1.add(createLaunchButton("client", name, frame));
           buttonList1.revalidate();
           buttonList1.repaint();
-          
+
           clientName.setText("");
           clientVersion.setText("");
           clientMods.setText("");
@@ -235,11 +235,11 @@ public class Launcher {
             }
             Files.write(new File(profileDir, "version.txt").toPath(), (version + " " + fabricLoaderVersion + " " + tunnel).getBytes());
           }
-          
+
           buttonList2.add(createLaunchButton("server", name, frame));
           buttonList2.revalidate();
           buttonList2.repaint();
-          
+
           serverName.setText("");
           serverVersion.setText("");
           serverTunnel.setText("");
@@ -260,7 +260,7 @@ public class Launcher {
     fieldPanel.setMaximumSize(new Dimension(Integer.MAX_VALUE, 50));
     return fieldPanel;
   }
-  
+
   private static JButton createLaunchButton(String launcher, String profile, JFrame frame) {
     JButton button = new JButton(profile);
     button.setAlignmentX(Component.LEFT_ALIGNMENT);
@@ -277,7 +277,7 @@ public class Launcher {
     }
     return button;
   }
-  
+
   private static void showEditPopup(String profile, JFrame parent) throws Exception {
     JDialog dialog = new JDialog(parent, "Edit mods", true);
     dialog.setSize(400, 250);
@@ -448,9 +448,15 @@ public class Launcher {
   }
 
   private static void download(String urlString, File path) throws IOException {
+    download(urlString, path, true);
+  }
+
+  private static void download(String urlString, File path, boolean print) throws IOException {
     path.getParentFile().mkdirs();
     if (path.exists()) {
-      System.out.println("Exists " + path.getAbsolutePath());
+      if (print) {
+        System.out.println("Exists " + path.getAbsolutePath());
+      }
       return;
     }
     System.out.println("Downloading " + urlString + " -> " + path.getAbsolutePath());
@@ -563,9 +569,9 @@ public class Launcher {
         return;
       }
       vanillaVersionDir.mkdirs();
-      download(versionUrl, versionJsonPath);
+      download(versionUrl, versionJsonPath, false);
       versionJson = readJsonObject(versionJsonPath.toURI().toString());
-      download(versionJson.getJSONObject("downloads").getJSONObject("client").getString("url"), new File(vanillaVersionDir, minecraftVersion + ".jar"));
+      download(versionJson.getJSONObject("downloads").getJSONObject("client").getString("url"), new File(vanillaVersionDir, minecraftVersion + ".jar"), false);
     } else {
       versionJson = readJsonObject(versionJsonPath.toURI().toString());
     }
@@ -579,7 +585,7 @@ public class Launcher {
       JSONObject artifact = lib.getJSONObject("downloads").getJSONObject("artifact");
       String artifactUrl = artifact.getString("url");
       String artifactPath = artifact.getString("path");
-      download(artifactUrl, new File(librariesDir, artifactPath));
+      download(artifactUrl, new File(librariesDir, artifactPath), false);
 
       if (lib.has("downloads") && lib.getJSONObject("downloads").has("classifiers")) {
         String osName = getPlatformOSName();
@@ -589,7 +595,7 @@ public class Launcher {
           JSONObject nativeObj = classifiers.getJSONObject(nativeKey);
           String nativeUrl = nativeObj.getString("url");
           String nativePath = nativeObj.getString("path");
-          download(nativeUrl, new File(librariesDir, nativePath));
+          download(nativeUrl, new File(librariesDir, nativePath), false);
         }
       }
     }
@@ -597,7 +603,7 @@ public class Launcher {
     // Download assets
     String assetsIndexName = versionJson.getString("assets");
     File assetsFile = new File(new File(assetsDir, "indexes"), assetsIndexName + ".json");
-    download(versionJson.getJSONObject("assetIndex").getString("url"), assetsFile);
+    download(versionJson.getJSONObject("assetIndex").getString("url"), assetsFile, false);
 
     JSONObject assetsJson = readJsonObject(assetsFile.toURI().toString());
     JSONObject objects = assetsJson.getJSONObject("objects");
@@ -607,7 +613,7 @@ public class Launcher {
       JSONObject asset = objects.getJSONObject(key);
       String hash = asset.getString("hash");
       File assetPath = new File(new File(objectsDir, hash.substring(0, 2)), hash);
-      download("https://resources.download.minecraft.net/" + hash.substring(0, 2) + "/" + hash, assetPath);
+      download("https://resources.download.minecraft.net/" + hash.substring(0, 2) + "/" + hash, assetPath, false);
     }
     // Download mods
     if (!downloadMod("fabric-api", modsDir, minecraftVersion)) return;
