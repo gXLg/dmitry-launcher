@@ -17,7 +17,7 @@
   },
   "homepage": "https://github.com/gXLg/dmitry-launcher#readme",
   "dependencies": {
-    "axios": "^1.9.0",
+    "axios": "^1.13.1",
     "express": "^5.1.0"
   }
 }
