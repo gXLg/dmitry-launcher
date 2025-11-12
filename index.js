@@ -23,7 +23,7 @@ app.get("/:secret/t", (req, res) => {
   }
 });
 
-app.use("/skins", express.static("./skins"));
+app.use("/uploads", express.static("./uploads"));
 
 const server = app.listen(process.argv[2] ? parseInt(process.argv[2]) : 8080);
 
