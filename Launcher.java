@@ -953,6 +953,7 @@ public class Launcher {
       ProcessBuilder tunnelBuilder = new ProcessBuilder(
         cloudflaredBinary.getAbsolutePath(),
         "--config", "./ingress.yml",
+        "--protocol", "http2",
         "tunnel", "run"
       );
       tunnelBuilder.directory(profileDir);
