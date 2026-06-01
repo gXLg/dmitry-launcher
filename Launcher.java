@@ -92,6 +92,7 @@ public class Launcher {
     File clientProfilesDir = new File(MINECRAFT_DIR, "profiles");
     clientProfilesDir.mkdirs();
     File[] profiles1 = clientProfilesDir.listFiles();
+    Arrays.sort(profiles1);
     Set<String> profilesSet1 = new HashSet<>();
     if (profiles1 != null) {
       for (int i = 0; i < profiles1.length; i++) {
@@ -172,6 +173,7 @@ public class Launcher {
     File serverProfilesDir = new File(MINECRAFT_DIR, "servers");
     serverProfilesDir.mkdirs();
     File[] profiles2 = serverProfilesDir.listFiles();
+    Arrays.sort(profiles2);
     Set<String> profilesSet2 = new HashSet<>();
     if (profiles2 != null) {
       for (int i = 0; i < profiles2.length; i++) {
