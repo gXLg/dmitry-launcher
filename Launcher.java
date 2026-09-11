@@ -533,6 +533,7 @@ public class Launcher {
     String minecraftVersion = data[0];
     String fabricLoaderVersion = data[1];
     String mods = data.length > 2 ? data[2] : "";
+    String ram = data.length > 3 ? data[3] : "3G";
 
     String versionId = "fabric-loader-" + fabricLoaderVersion + "-" + minecraftVersion;
     File fabricVersionDir = new File(versionsDir, versionId);
@@ -716,7 +717,7 @@ public class Launcher {
     List<String> command = new ArrayList<>();
     command.add("java");
     command.addAll(jvmArgs);
-    command.add("-Xmx3G"); // Memory setting
+    command.add("-Xmx" + ram); // Memory setting
     command.add(fabricConfig.getString("mainClass"));
     command.addAll(gameArgs);
 
